@@ -1,0 +1,121 @@
+<!doctype html><html><head><meta charset="utf-8"><title>creature viewer</title>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#000}canvas{width:100%;height:100%;display:block}
+.lbl{position:fixed;transform:translate(-50%,0);color:#3a3150;font:bold 12px sans-serif;white-space:nowrap;pointer-events:none;text-shadow:0 1px 0 #fff8}
+#title{position:fixed;left:8px;top:6px;color:#3a3150;font:bold 13px sans-serif}</style></head>
+<body><canvas id="c"></canvas><div id="title"></div>
+<script type="module">
+// Creature viewer (pets / enemies / npcs). URL params:
+//  mod, fn, ids (comma list; "id:arg" passes a 2nd arg; numbers are converted)
+//  anim | anims (comma list -> one column per anim, rows = ids)
+//  cols, sp (spacing), yaw, dist, h (camera target height), y (lift models), pre (pre-simulated seconds),
+//  freeze=1 (stop advancing after pre), call=method:value[;method:value] (called on each rig),
+//  ref=1 (height/radius/centerY markers), lbl=0 (hide labels), speed, ground=0, night=1, t (fixed anim t),
+//  dt (sim step multiplier), fov
+import { Renderer } from '../js/engine/renderer.js';
+import { Scene, Mesh, Camera, Node } from '../js/engine/scene.js';
+import { Material } from '../js/engine/material.js';
+import * as G from '../js/engine/geometry.js';
+import { makeParticleAtlas } from '../js/engine/texgen.js';
+import { BillboardBatch } from '../js/engine/particles.js';
+const q = new URLSearchParams(location.search);
+const modName = q.get('mod') || 'pets';
+const fnName = q.get('fn') || 'buildPet';
+const ids = (q.get('ids') || 'bee').split(',');
+const anims = (q.get('anims') || q.get('anim') || 'idle').split(',');
+const multiAnim = anims.length > 1;
+const items = [];
+for (const id of ids) for (const a of anims) items.push({ id, anim: a });
+const cols = +(q.get('cols') || (multiAnim ? anims.length : Math.min(items.length, 6)));
+const spacing = +(q.get('sp') || 1.6);
+const yaw = +(q.get('yaw') || 0.35);
+const camDist = +(q.get('dist') || 0);
+const camH = +(q.get('h') || 0.8);
+const lift = +(q.get('y') || 0);
+const pre = +(q.get('pre') || 0);
+const freeze = q.get('freeze') === '1';
+const showRef = q.get('ref') === '1';
+const showLbl = q.get('lbl') !== '0';
+const night = q.get('night') === '1';
+const vgrid = q.get('vgrid') === '1';           // stack rows vertically (for floating models)
+const vsp = +(q.get('vsp') || spacing * 0.8);
+const mod = await import(`../js/game/models/${modName}.js`);
+const canvas = document.getElementById('c');
+const r = new Renderer(canvas, { preserveDrawingBuffer: true });
+r.setSize(innerWidth, innerHeight);
+const scene = new Scene();
+scene.sky = { uniforms: night
+  ? { uZenith:[0.1,0.1,0.3], uHorizon:[0.35,0.3,0.55], uBottom:[0.2,0.2,0.35], uSkyExp:0.7, uSunGlow:[0.5,0.5,0.8], uSunSize:0.003, uStars:1, uAurora:0, uAurora1:[0,0,0], uAurora2:[0,0,0], uSwirl:0.3 }
+  : { uZenith:[0.55,0.72,1.0], uHorizon:[0.98,0.9,0.95], uBottom:[0.9,0.88,0.98], uSkyExp:0.7, uSunGlow:[1,0.9,0.7], uSunSize:0.003, uStars:0, uAurora:0, uAurora1:[0,0,0], uAurora2:[0,0,0], uSwirl:0.3 } };
+if (q.get('ground') !== '0') {
+  const ground = new Mesh(G.roundedBoxGeo(60, 1, 60, 0.3, 3), new Material({ color: night ? 0x6a6a9a : 0xbfe8a8 }));
+  ground.position.y = -0.5; scene.add(ground);
+}
+const atlas = makeParticleAtlas();
+const shadows = new BillboardBatch({ max: 200, atlas, flat: true, renderOrder: 10 });
+scene.add(shadows);
+const rigs = [];
+const rows = Math.ceil(items.length / cols);
+const conv = (v) => (v !== undefined && v !== '' && !isNaN(+v) ? +v : v);
+const refMat = new Material({ color: 0xff3366, transparent: true, opacity: 0.35, unlit: true, depthWrite: false });
+const refMat2 = new Material({ color: 0x3366ff, transparent: true, opacity: 0.5, unlit: true, depthWrite: false });
+items.forEach((it, i) => {
+  const cx = (i % cols) - (cols - 1) / 2, cz = Math.floor(i / cols) - (rows - 1) / 2;
+  const [id, arg] = it.id.split(':');
+  let rig = mod[fnName](conv(id), conv(arg));
+  const node = rig.root || rig;
+  if (vgrid) node.position.set(cx * spacing, lift + ((rows - 1) / 2 - Math.floor(i / cols)) * vsp, 0);
+  else node.position.set(cx * spacing, lift, cz * spacing * 1.1);
+  node.rotation.y = yaw;
+  scene.add(node);
+  if (rig.flying && q.get('autolift') !== '0') node.position.y += rig.height * 0.62; // flyers float at their centre
+  const calls = (q.get('call') || '').split(';').filter(Boolean);
+  for (const c of calls) { const [m, v] = c.split(':'); if (typeof rig[m] === 'function') rig[m](conv(v)); }
+  if (showRef && rig.height) {
+    const g = new Node('ref'); g.position.copy(node.position); scene.add(g);
+    const base = rig.flying ? -rig.height / 2 : 0;
+    const pole = new Mesh(G.UNIT.cylinder(), refMat); pole.scale.set(0.01, rig.height, 0.01); pole.position.set((rig.radius || 0.3) + 0.05, base + rig.height / 2, 0); g.add(pole);
+    const ring = new Mesh(G.ringGeo(0.97, 1, 48), refMat); ring.scale.set(rig.radius || 0.3, 1, rig.radius || 0.3); ring.position.y = base + 0.005; g.add(ring);
+    const cy = new Mesh(G.UNIT.sphere(), refMat2); cy.scale.set(0.025, 0.025, 0.025); cy.position.set((rig.radius || 0.3) + 0.05, rig.centerY ?? 0, 0); g.add(cy);
+  }
+  let total = 0, vis = 0;
+  node.traverse((n) => { if (n.isMesh) total++; });
+  const countVis = (n, pv) => { const v = pv && n.visible; if (n.isMesh && v) vis++; for (const c of n.children) countVis(c, v); };
+  const el = document.createElement('div'); el.className = 'lbl'; document.body.appendChild(el);
+  el.textContent = it.id + (multiAnim || anims[0] !== 'idle' ? ' · ' + it.anim : '');
+  if (!showLbl) el.style.display = 'none';
+  rigs.push({ rig, node, id: it.id, anim: it.anim, el, total, countVis, vis: () => { vis = 0; countVis(node, true); return vis; } });
+});
+const cam = new Camera(+(q.get('fov') || 35), 0.05, 500);
+const w = cols * spacing, d = rows * spacing;
+const dist = camDist || Math.max(w * 1.25, d * 1.6, 3.2);
+if (vgrid) { cam.position.set(0, lift + dist * 0.12, dist); cam.target.set(0, lift, 0); }
+else { cam.position.set(0, camH + dist * 0.35, dist); cam.target.set(0, q.get('ty') !== null ? +q.get('ty') : camH * 0.75, 0); }
+document.getElementById('title').textContent = `${modName}.${fnName}`;
+let t = 0; window.__frames = 0;
+const tParam = q.get('t');
+const step = 1 / 60;
+function sim(dt) {
+  t += dt; r.globals.uTime = t;
+  for (const R of rigs) if (R.rig.update) R.rig.update(dt, { anim: R.anim, t: tParam !== null ? +tParam : t, speed: +(q.get('speed') || 0.8), vy: +(q.get('vy') || 0) });
+}
+for (let s = 0; s < pre; s += step) sim(step);
+const stats = rigs.map((R) => `${R.id}/${R.anim}: meshes=${R.total} visible=${R.vis()}` + (R.rig.height ? ` h=${R.rig.height} r=${R.rig.radius} cy=${R.rig.centerY}` : '') + (R.rig.size ? ` size=${R.rig.size}` : ''));
+console.log('[stats]\n' + stats.join('\n'));
+function frame(){
+  if (!freeze) sim(step * +(q.get('dt') || 1));
+  shadows.begin();
+  for (const R of rigs) {
+    const sc = R.rig.flying || lift > 0 ? 0.5 : 0.9;
+    shadows.push(R.node.position.x, 0.01, R.node.position.z, (R.rig.radius ? R.rig.radius * 2.6 : sc), 0.15, 0.1, 0.3, 0.32, 0, 14);
+  }
+  r.render(scene, cam);
+  for (const R of rigs) {
+    const p = cam.project({ x: R.node.position.x, y: vgrid ? R.node.position.y - vsp * 0.42 : -0.05, z: R.node.position.z });
+    R.el.style.left = (p.x * innerWidth) + 'px'; R.el.style.top = (p.y * innerHeight + 4) + 'px';
+  }
+  window.__frames++;
+  if (freeze && window.__frames > 2) return; // static shot: stop rendering (keeps the CPU rasterizer idle)
+  requestAnimationFrame(frame);
+}
+frame();
+</script></body></html>

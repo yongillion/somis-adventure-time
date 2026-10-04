@@ -1,0 +1,243 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Audio test</title>
+<style>
+  body { font: 12px/1.35 ui-monospace, Menlo, Consolas, monospace; background: #15121c; color: #ddd; margin: 10px; }
+  h3 { margin: 4px 0 8px; color: #ffd6f0; }
+  .ok { color: #8ef59a; } .bad { color: #ff7d8a; } .dim { color: #888; }
+  table { border-collapse: collapse; margin: 6px 0 12px; }
+  td, th { padding: 1px 7px; text-align: right; } th { color: #b9a6ff; font-weight: normal; } td:first-child, th:first-child { text-align: left; }
+  #cols { display: flex; gap: 18px; flex-wrap: wrap; }
+</style></head>
+<body>
+<h3>소미의 어드벤처 타임 — procedural audio test</h3>
+<div id="status">running…</div>
+<div id="cols"><div id="c1"></div><div id="c2"></div><div id="c3"></div></div>
+<script type="module">
+import { Audio, AudioTest, renderScenario, getCompiled } from '../js/engine/audio.js';
+
+const qs = new URLSearchParams(location.search);
+const SR = +(qs.get('sr') || 44100);
+const ONLY = qs.get('only'); // 'tracks' | 'jingles' | 'sfx' | 'scenario' | null
+const report = { done: false, pass: false, summary: '', preInit: null, compile: null, live: null, scenario: null, tracks: [], jingles: [], sfx: [], failures: [], ms: 0 };
+window.__audioReport = report;
+const t0 = performance.now();
+const $ = (id) => document.getElementById(id);
+const r3 = (x) => Math.round(x * 1000) / 1000;
+const db = (x) => (x > 0 ? Math.round(20 * Math.log10(x) * 10) / 10 : -999);
+
+// ------------------------------------------------------------------ analysis
+function analyze(buf, from = 0, to = buf.duration, win = 0.5) {
+  const sr = buf.sampleRate, n = buf.length, chs = [];
+  for (let c = 0; c < buf.numberOfChannels; c++) chs.push(buf.getChannelData(c));
+  let peak = 0, sum = 0, nan = 0, clip = 0, dc = 0, maxJump = 0;
+  for (const d of chs) {
+    let prev = 0;
+    for (let i = 0; i < n; i++) {
+      const x = d[i];
+      if (!Number.isFinite(x)) { nan++; continue; }
+      const a = Math.abs(x);
+      if (a > peak) peak = a;
+      if (a > 0.99) clip++;
+      sum += x * x; dc += x;
+      const j = Math.abs(x - prev); if (j > maxJump) maxJump = j; prev = x;
+    }
+  }
+  const rms = Math.sqrt(sum / (n * chs.length));
+  // windowed RMS inside [from, to]
+  const wl = Math.floor(win * sr), i0 = Math.floor(from * sr), i1 = Math.min(n, Math.floor(to * sr));
+  let minWin = Infinity, wins = [];
+  for (let s = i0; s + wl <= i1; s += wl) {
+    let acc = 0;
+    for (const d of chs) for (let i = s; i < s + wl; i++) acc += d[i] * d[i];
+    const w = Math.sqrt(acc / (wl * chs.length)); wins.push(w); if (w < minWin) minWin = w;
+  }
+  const endN = Math.floor(0.25 * sr);
+  let endAcc = 0; for (const d of chs) for (let i = n - endN; i < n; i++) endAcc += d[i] * d[i];
+  const first = Math.max(...chs.map((d) => Math.abs(d[0])));
+  return { peak, rms, nan, clip, dc: dc / (n * chs.length), maxJump, minWin: wins.length ? minWin : 0, wins, endRms: Math.sqrt(endAcc / (endN * chs.length)), first };
+}
+function winRms(buf, a, b) {
+  const sr = buf.sampleRate, i0 = Math.max(0, Math.floor(a * sr)), i1 = Math.min(buf.length, Math.floor(b * sr));
+  let acc = 0; const C = buf.numberOfChannels;
+  for (let c = 0; c < C; c++) { const d = buf.getChannelData(c); for (let i = i0; i < i1; i++) acc += d[i] * d[i]; }
+  return Math.sqrt(acc / Math.max(1, (i1 - i0) * C));
+}
+async function pool(items, n, fn) {
+  const out = new Array(items.length); let next = 0;
+  await Promise.all(Array.from({ length: n }, async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i], i); } }));
+  return out;
+}
+function table(el, title, rows, cols) {
+  const h = [`<b>${title}</b><table><tr>${cols.map((c) => `<th>${c[0]}</th>`).join('')}</tr>`];
+  for (const r of rows) h.push(`<tr class="${r.pass ? 'ok' : 'bad'}">${cols.map((c) => `<td>${c[1](r)}</td>`).join('')}</tr>`);
+  h.push('</table>'); el.insertAdjacentHTML('beforeend', h.join(''));
+}
+
+// ------------------------------------------------------------------ 1. API before init must not throw
+function preInitTest() {
+  const errors = [];
+  const calls = {
+    'setMusicVolume': () => Audio.setMusicVolume(0.6), 'setSfxVolume': () => Audio.setSfxVolume(0.8),
+    'playMusic': () => Audio.playMusic('title'), 'playMusic(opts)': () => Audio.playMusic('meadow', { fade: 0, restart: true }),
+    'playMusic(unknown)': () => Audio.playMusic('nope'), 'stopMusic': () => Audio.stopMusic(), 'stopMusic(0.2)': () => Audio.stopMusic(0.2),
+    'duck': () => Audio.duck(), 'duck(args)': () => Audio.duck(0.2, 1), 'jingle': () => Audio.jingle('stageclear'), 'jingle(unknown)': () => Audio.jingle('nope'),
+    'sfx': () => Audio.sfx('coin'), 'sfx(opts)': () => Audio.sfx('coin', { vol: 0.5, pitch: 1.5, pan: -1 }), 'sfx(unknown)': () => Audio.sfx('nope'),
+    'sfx(bad opts)': () => Audio.sfx('jump', { vol: NaN, pitch: 0, pan: 9 }),
+    'suspend': () => Audio.suspend(), 'resume': () => Audio.resume(), 'currentMusic': () => Audio.currentMusic, 'ready': () => Audio.ready,
+  };
+  for (const [k, fn] of Object.entries(calls)) { try { fn(); } catch (e) { errors.push(k + ': ' + e.message); } }
+  Audio.stopMusic(); Audio.resume();
+  const pass = errors.length === 0 && Audio.ready === false && Audio.currentMusic === null;
+  return { pass, errors, readyBefore: Audio.ready };
+}
+
+// ------------------------------------------------------------------ 2. tracks: one full loop (+ intro, + seam) each
+async function testTrack(id) {
+  const c = getCompiled(id);
+  const start = 0.06, seam = start + c.introSec + c.loopSec, dur = seam + 3.5;
+  const tt = performance.now();
+  const { buf, eng } = await renderScenario(dur, [{ t: 0, fn: (e) => e.playMusic(id, { fade: 0 }) }], { sampleRate: SR });
+  const a = analyze(buf, 0.6, seam);
+  const around = winRms(buf, seam - 0.25, seam + 0.25), med = a.wins.slice().sort((x, y) => x - y)[a.wins.length >> 1] || 0;
+  const seamRatio = med ? around / med : 0;
+  const errs = c.errors.concat(eng.errors);
+  const pass = a.nan === 0 && a.peak <= 0.99 && a.peak > 0.05 && a.rms > 0.01 && a.minWin > 0.003 && seamRatio > 0.2 && errs.length === 0;
+  return { id, bpm: c.bpm, loop: r3(c.loopSec), dur: r3(dur), peak: r3(a.peak), rmsDb: db(a.rms), minWinDb: db(a.minWin), seam: r3(seamRatio), voices: eng.stats.maxVoices, steals: eng.stats.steals, nan: a.nan, clip: a.clip, dc: r3(a.dc), ms: Math.round(performance.now() - tt), errs, pass };
+}
+// ------------------------------------------------------------------ 3. jingles
+async function testJingle(id) {
+  const c = getCompiled(id, true);
+  const dur = 0.05 + c.lengthSec + (c.tail || 1.5) + 1.5;
+  const { buf, eng } = await renderScenario(dur, [{ t: 0.05, fn: (e) => e.jingle(id) }], { sampleRate: SR });
+  const a = analyze(buf, 0.1, 0.05 + c.lengthSec * 0.6);
+  const errs = c.errors.concat(eng.errors);
+  const pass = a.nan === 0 && a.peak <= 0.99 && a.peak > 0.05 && a.rms > 0.003 && a.endRms < 0.01 && errs.length === 0;
+  return { id, len: r3(c.lengthSec), peak: r3(a.peak), rmsDb: db(a.rms), endDb: db(a.endRms), nan: a.nan, clip: a.clip, errs, pass };
+}
+// ------------------------------------------------------------------ 4. sfx (normal, plus pitched/panned variant)
+async function testSfx(name) {
+  const dur = 5;
+  const { buf, eng } = await renderScenario(dur, [{ t: 0.05, fn: (e) => e.sfx(name) }, { t: 2.5, fn: (e) => e.sfx(name, { vol: 0.8, pitch: 1.35, pan: -0.8 }) }], { sampleRate: SR });
+  const a = analyze(buf);
+  const firstPart = analyze(sliceBuf(buf, 0, 2.45));
+  const errs = eng.errors;
+  const pass = a.nan === 0 && a.peak <= 0.99 && firstPart.peak > 0.01 && a.endRms < 0.005 && a.first < 0.001 && errs.length === 0;
+  return { id: name, peak: r3(firstPart.peak), rmsDb: db(firstPart.rms), endDb: db(a.endRms), nan: a.nan, clip: a.clip, errs, pass };
+}
+function sliceBuf(buf, a, b) {
+  const sr = buf.sampleRate, i0 = Math.floor(a * sr), i1 = Math.floor(b * sr);
+  const out = new AudioBuffer({ length: i1 - i0, numberOfChannels: buf.numberOfChannels, sampleRate: sr });
+  for (let c = 0; c < buf.numberOfChannels; c++) out.copyToChannel(buf.getChannelData(c).subarray(i0, i1), c);
+  return out;
+}
+// ------------------------------------------------------------------ 5. live-like scenario: crossfades, ducking, jingles, sfx spam, volume
+async function testScenario() {
+  const A = [];
+  const at = (t, fn) => A.push({ t, fn });
+  at(0, (e) => e.playMusic('title'));
+  at(4, (e) => e.playMusic('meadow', { fade: 1.0 }));
+  for (let i = 0; i < 5; i++) at(6 + i * 0.12, (e) => e.sfx('coin', { pitch: 1 + i * 0.06 }));
+  at(7, (e) => e.jingle('stageclear'));
+  at(12, (e) => e.duck(0.3, 2));
+  at(14, (e) => e.playMusic('boss', { fade: 0.5 }));
+  for (let i = 0; i < 40; i++) at(15 + i * 0.025, (e) => e.sfx(['pop', 'hit', 'coin', 'jump', 'explode', 'magic'][i % 6], { pan: Math.sin(i) }));
+  at(18, (e) => e.stopMusic(1.5));
+  at(19, (e) => e.sfx('explode'));
+  at(20, (e) => e.playMusic('noa'));
+  at(22, (e) => e.setMusicVolume(0.3));
+  at(24, (e) => { e.setSfxVolume(0.5); e.sfx('colorBloom'); });
+  at(26, (e) => e.playMusic('noa'));
+  at(27, (e) => e.playMusic('noa', { restart: true }));
+  at(28, (e) => e.jingle('victory'));
+  at(28.5, (e) => e.jingle('cookie'));
+  const dur = 32;
+  const { buf, eng } = await renderScenario(dur, A, { sampleRate: SR });
+  const a = analyze(buf, 0.5, 18);                 // full-volume music: must be continuous through crossfades/ducks
+  const b = analyze(sliceBuf(buf, 20.5, 22));      // noa at full volume
+  const c = analyze(sliceBuf(buf, 22.5, 32));      // after setMusicVolume(0.3): quieter, still clean
+  const volDrop = db(b.rms) - db(analyze(sliceBuf(buf, 22.5, 23.5)).rms);
+  const duckDrop = db(winRms(buf, 11.0, 11.95)) - db(winRms(buf, 12.4, 13.9));   // duck(0.3, 2) at t=12
+  const pass = a.nan + b.nan + c.nan === 0 && Math.max(a.peak, b.peak, c.peak) <= 0.99 && a.minWin > 0.003 && b.minWin > 0.002 && volDrop > 6 && duckDrop > 5 &&
+    eng.errors.length === 0 && eng.stats.maxVoices <= eng.maxVoices;
+  return { peak: r3(Math.max(a.peak, b.peak, c.peak)), rmsDb: db(a.rms), minWinDb: db(Math.min(a.minWin, b.minWin)), volDropDb: r3(volDrop), duckDropDb: r3(duckDrop), steals: eng.stats.steals, maxVoices: eng.stats.maxVoices, nan: a.nan + b.nan + c.nan, clip: a.clip + b.clip + c.clip, errors: eng.errors, pass };
+}
+// ------------------------------------------------------------------ 6. live AudioContext (timer scheduler) smoke test
+async function liveTest() {
+  const res = { pass: false, state: null, ready: false, errors: [] };
+  try {
+    res.ready = Audio.init();
+    Audio.playMusic('map');
+    Audio.sfx('coin'); Audio.jingle('secret'); Audio.duck(0.3, 0.5);
+    await new Promise((r) => setTimeout(r, 700));
+    Audio.playMusic('meadow', { fade: 0.3 }); Audio.setMusicVolume(0.5); Audio.setSfxVolume(0.5);
+    await new Promise((r) => setTimeout(r, 400));
+    Audio.suspend(); Audio.sfx('jump'); Audio.resume();
+    res.state = Audio.ready ? 'ready' : 'not-ready';
+    res.current = Audio.currentMusic;
+    Audio.stopMusic(0.2);
+    res.pass = res.ready === true && res.current === 'meadow';
+  } catch (e) { res.errors.push(e.message); }
+  return res;
+}
+
+// ------------------------------------------------------------------ WAV export hook (used by external analysis scripts)
+window.__renderWav = async (kind, id, seconds, opts = {}) => {
+  let actions;
+  if (kind === 'music') actions = [{ t: 0, fn: (e) => e.playMusic(id, { fade: 0 }) }];
+  else if (kind === 'jingle') actions = [{ t: 0.05, fn: (e) => e.jingle(id) }];
+  else actions = [{ t: 0.05, fn: (e) => e.sfx(id, opts) }];
+  if (!seconds) { const c = kind === 'music' ? getCompiled(id) : kind === 'jingle' ? getCompiled(id, true) : null; seconds = c ? (kind === 'music' ? c.introSec + c.loopSec + 3 : c.lengthSec + 3) : 3; }
+  const { buf } = await renderScenario(seconds, actions, { sampleRate: opts.sr || 44100 });
+  const n = buf.length, C = 2, pcm = new Int16Array(n * C);
+  const L = buf.getChannelData(0), R = buf.getChannelData(1);
+  for (let i = 0; i < n; i++) { pcm[2 * i] = Math.max(-1, Math.min(1, L[i])) * 32767; pcm[2 * i + 1] = Math.max(-1, Math.min(1, R[i])) * 32767; }
+  const bytes = new Uint8Array(pcm.buffer); let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return { sr: buf.sampleRate, n, b64: btoa(s) };
+};
+
+// ------------------------------------------------------------------ run
+(async () => {
+  try {
+    if (qs.get('wavonly')) { report.done = true; $('status').textContent = 'wav export mode'; return; }
+    report.preInit = preInitTest();
+    report.compile = AudioTest.compileAll();
+    if (!report.preInit.pass) report.failures.push('preInit: ' + JSON.stringify(report.preInit));
+    if (report.compile.length) report.failures.push('compile: ' + report.compile.join('; '));
+    const conc = +(qs.get('conc') || 2);
+    if (!ONLY || ONLY === 'tracks') {
+      $('status').textContent = 'rendering tracks…';
+      report.tracks = await pool(Object.keys(AudioTest.SONGS), conc, testTrack);
+      table($('c1'), 'tracks', report.tracks, [['id', (r) => r.id], ['bpm', (r) => r.bpm], ['loop s', (r) => r.loop], ['peak', (r) => r.peak], ['rms dB', (r) => r.rmsDb], ['minWin', (r) => r.minWinDb], ['seam', (r) => r.seam], ['voices', (r) => r.voices], ['steals', (r) => r.steals], ['ms', (r) => r.ms]]);
+    }
+    if (!ONLY || ONLY === 'jingles') {
+      $('status').textContent = 'rendering jingles…';
+      report.jingles = await pool(Object.keys(AudioTest.JINGLES), conc, testJingle);
+      table($('c2'), 'jingles', report.jingles, [['id', (r) => r.id], ['len s', (r) => r.len], ['peak', (r) => r.peak], ['rms dB', (r) => r.rmsDb], ['end dB', (r) => r.endDb]]);
+    }
+    if (!ONLY || ONLY === 'sfx') {
+      $('status').textContent = 'rendering sfx…';
+      report.sfx = await pool(Object.keys(AudioTest.SFX), conc + 1, testSfx);
+      table($('c3'), 'sfx', report.sfx, [['name', (r) => r.id], ['peak', (r) => r.peak], ['rms dB', (r) => r.rmsDb], ['end dB', (r) => r.endDb]]);
+    }
+    if (!ONLY || ONLY === 'scenario') {
+      $('status').textContent = 'scenario…';
+      report.scenario = await testScenario();
+      if (!report.scenario.pass) report.failures.push('scenario: ' + JSON.stringify(report.scenario));
+      report.live = await liveTest();
+      if (!report.live.pass) report.failures.push('live: ' + JSON.stringify(report.live));
+    }
+    for (const group of ['tracks', 'jingles', 'sfx']) for (const r of report[group]) if (!r.pass) report.failures.push(`${group}/${r.id}: ` + JSON.stringify(r));
+    report.pass = report.failures.length === 0;
+    const cnt = (g) => `${report[g].filter((r) => r.pass).length}/${report[g].length}`;
+    report.summary = `${report.pass ? 'PASS' : 'FAIL'} tracks ${cnt('tracks')} jingles ${cnt('jingles')} sfx ${cnt('sfx')} preInit ${report.preInit.pass} scenario ${report.scenario ? report.scenario.pass : '-'} live ${report.live ? report.live.pass : '-'}`;
+  } catch (e) {
+    report.failures.push('exception: ' + e.message + '\n' + e.stack);
+    report.pass = false; report.summary = 'FAIL (exception)';
+  }
+  report.ms = Math.round(performance.now() - t0);
+  report.done = true;
+  $('status').innerHTML = `<span class="${report.pass ? 'ok' : 'bad'}">${report.summary}</span> <span class="dim">(${(report.ms / 1000).toFixed(1)} s, ${SR} Hz)</span>` +
+    (report.failures.length ? '<pre class="bad">' + report.failures.slice(0, 20).join('\n') + '</pre>' : '');
+})();
+</script>
+</body></html>

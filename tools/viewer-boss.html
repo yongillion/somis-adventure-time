@@ -1,0 +1,91 @@
+<!doctype html><html><head><meta charset="utf-8"><title>boss viewer</title>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#000}canvas{width:100%;height:100%;display:block}
+.lbl{position:fixed;transform:translate(-50%,0);color:#2a2440;font:bold 12px sans-serif;background:rgba(255,255,255,.62);padding:1px 6px;border-radius:8px;white-space:nowrap;pointer-events:none}</style></head>
+<body><canvas id="c"></canvas><div id="labels"></div>
+<script type="module">
+// Boss viewer. Cells = cartesian product of ids x anims x ts x pur, laid out in a grid.
+//  ?ids=mushking,pumpkin &anims=idle,walk &ts=0.2,0.6 (frozen anim t; omit = running) &pur=0,1
+//  &cols=4 &sp=5 (cell spacing) &yaw=0.3 &dist=14 &cy=4 (camera height) &ty=1.6 (look-at y) &fov=35
+//  &speed=0.8 &vy=0 &tentacle=0 &hand=R &tongueLen=6 &boltLen=6 &flash=0 &op=1 &warm=90 &marks=1 &info=1 &lbl=0
+import { Renderer } from '../js/engine/renderer.js';
+import { Scene, Mesh, Camera } from '../js/engine/scene.js';
+import { Material } from '../js/engine/material.js';
+import * as G from '../js/engine/geometry.js';
+import { Vec3 } from '../js/engine/math.js';
+import { makeParticleAtlas } from '../js/engine/texgen.js';
+import { BillboardBatch } from '../js/engine/particles.js';
+import { buildBoss } from '../js/game/models/bosses.js';
+const q = new URLSearchParams(location.search);
+const list = (k, d) => (q.get(k) ?? d).split(',').filter((s) => s !== '');
+const ids = list('ids', 'mushking');
+const anims = list('anims', q.get('anim') || 'idle');
+const ts = list('ts', q.get('t') || '');
+const purs = list('pur', '0');
+const yaws = list('yaws', q.get('yaw') || '0').map(Number);
+const cells = [];
+// explicit cells: &cells=anim:t[:pur[:yaw]],...  (ids[0] used)
+if (q.get('cells')) for (const cs of q.get('cells').split(',')) { const [anim, tv, pv, yw] = cs.split(':'); cells.push({ id: ids[0], anim, t: tv === undefined || tv === '' ? null : +tv, pur: pv !== undefined ? +pv : +purs[0], yaw: yw !== undefined ? +yw : yaws[0] }); }
+else for (const id of ids) for (const anim of anims) for (const tv of (ts.length ? ts : [''])) for (const pv of purs) for (const yw of yaws) cells.push({ id, anim, t: tv === '' ? null : +tv, pur: +pv, yaw: yw });
+const cols = +(q.get('cols') || Math.min(cells.length, 4));
+const rows = Math.ceil(cells.length / cols);
+const sp = +(q.get('sp') || 5);
+const canvas = document.getElementById('c');
+const r = new Renderer(canvas, { preserveDrawingBuffer: true });
+r.setSize(innerWidth, innerHeight);
+const scene = new Scene();
+scene.sky = { uniforms: { uZenith:[0.55,0.72,1.0], uHorizon:[0.98,0.9,0.95], uBottom:[0.9,0.88,0.98], uSkyExp:0.7, uSunGlow:[1,0.9,0.7], uSunSize:0.003, uStars:0, uAurora:0, uAurora1:[0,0,0], uAurora2:[0,0,0], uSwirl:0.3 } };
+const ground = new Mesh(G.roundedBoxGeo(200, 1, 200, 0.3, 3), new Material({ color: +(q.get('gc') || 0xbfe8a8) }));
+ground.position.y = -0.5; scene.add(ground);
+const atlas = makeParticleAtlas();
+const shadows = new BillboardBatch({ max: 200, atlas, flat: true, renderOrder: 10 });
+scene.add(shadows);
+const st0 = { speed: +(q.get('speed') ?? 0.8), vy: q.get('vy') !== null ? +q.get('vy') : undefined, tentacle: +(q.get('tentacle') || 0), hand: q.get('hand') || 'R', tongueLen: q.get('tongueLen') !== null ? +q.get('tongueLen') : undefined, boltLen: q.get('boltLen') !== null ? +q.get('boltLen') : undefined };
+const markGeo = G.sphereGeo(0.08, 8, 6), markMat = new Material({ color: 0xff2266, unlit: true, depthTest: false, transparent: true, opacity: 0.9 });
+const markers = [];
+const labelsDiv = document.getElementById('labels');
+cells.forEach((c, i) => {
+  const b = buildBoss(c.id);
+  const cx = (i % cols) - (cols - 1) / 2, cz = Math.floor(i / cols) - (rows - 1) / 2;
+  b.root.position.set(cx * sp, +(q.get('y') || 0), cz * sp * +(q.get('zsp') || 1));
+  b.root.rotation.y = c.yaw;
+  if (q.get('autoLift') && b.flying && b.centerY === 0) b.root.position.y += 2.6;
+  b.setPurified(c.pur);
+  if (q.get('flash')) b.setFlash(+q.get('flash'));
+  if (q.get('op')) b.setOpacity(+q.get('op'));
+  scene.add(b.root);
+  c.b = b;
+  if (q.get('wall')) { const wz = +q.get('wall'); const wall = new Mesh(G.boxGeo(4.5, 6, 0.2), new Material({ color: 0xc9b9a6 })); wall.position.set(b.root.position.x + Math.sin(c.yaw) * (wz - 0.1), 3, b.root.position.z + Math.cos(c.yaw) * (wz - 0.1)); wall.rotation.y = c.yaw; scene.add(wall); }
+  if (q.get('lbl') !== '0') {
+    const el = document.createElement('div'); el.className = 'lbl';
+    el.textContent = `${c.id} · ${c.anim}${c.t !== null ? ' t=' + c.t : ''}${purs.length > 1 || c.pur ? ' · pur ' + c.pur : ''}`;
+    labelsDiv.appendChild(el); c.el = el;
+  }
+  if (q.get('info')) console.log('[info] ' + JSON.stringify({ id: c.id, meshes: b.meshCount, height: b.height, radius: b.radius, parts: Object.keys(b.parts).map((k) => Array.isArray(b.parts[k]) ? k + '[' + b.parts[k].length + ']' : k) }));
+  if (q.get('marks')) for (const k in b.parts) { const arr = Array.isArray(b.parts[k]) ? b.parts[k] : [b.parts[k]]; for (const n of arr) { const m = new Mesh(markGeo, markMat); m.renderOrder = 999; scene.add(m); markers.push({ m, n }); } }
+});
+const cam = new Camera(+(q.get('fov') || 35), 0.1, 800);
+const dist = +(q.get('dist') || Math.max(cols * sp * 1.15, rows * sp * 1.6, 10));
+const ty = +(q.get('ty') || 1.6);
+cam.position.set(0, +(q.get('cy') || ty + dist * 0.3), dist);
+cam.target.set(0, ty, 0);
+let time = 0; window.__frames = 0;
+const warm = +(q.get('warm') || 90);
+const step = (dt) => {
+  time += dt;
+  for (const c of cells) c.b.update(dt, { ...st0, anim: c.anim, t: c.t ?? time });
+};
+for (let i = 0; i < warm; i++) step(1 / 60);
+const pv = new Vec3();
+function frame() {
+  step(1 / 60);
+  r.globals.uTime = time;
+  shadows.begin();
+  for (const c of cells) shadows.push(c.b.root.position.x, 0.01, c.b.root.position.z, c.b.radius * 2.0, 0.15, 0.1, 0.3, 0.3, 0, 14);
+  for (const k of markers) { k.n.updateWorldFromRoot(); k.n.getWorldPosition(k.m.position); }
+  r.render(scene, cam);
+  for (const c of cells) if (c.el) { pv.copy(c.b.root.position); pv.y = -0.2; pv.z += 2.2; const p = cam.project(pv); c.el.style.left = (p.x * innerWidth) + 'px'; c.el.style.top = (p.y * innerHeight) + 'px'; }
+  window.__frames++;
+  requestAnimationFrame(frame);
+}
+frame();
+</script></body></html>

@@ -1,0 +1,66 @@
+<!doctype html><html><head><meta charset="utf-8"><title>model viewer</title>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#000}canvas{width:100%;height:100%;display:block}
+#lbl{position:fixed;left:0;right:0;bottom:4px;color:#334;font:bold 13px sans-serif;text-align:center;pointer-events:none}</style></head>
+<body><canvas id="c"></canvas><div id="lbl"></div>
+<script type="module">
+// Model viewer. URL params:
+//  ?mod=animals&fn=buildAnimal&ids=cat,rabbit,dog&anim=idle&cols=5&spin=0&t=0.5
+import { Renderer } from '../js/engine/renderer.js';
+import { Scene, Mesh, Camera } from '../js/engine/scene.js';
+import { Material } from '../js/engine/material.js';
+import * as G from '../js/engine/geometry.js';
+import { makeParticleAtlas } from '../js/engine/texgen.js';
+import { BillboardBatch } from '../js/engine/particles.js';
+const q = new URLSearchParams(location.search);
+const modName = q.get('mod') || 'animals';
+const fnName = q.get('fn') || 'buildAnimal';
+const ids = (q.get('ids') || 'cat').split(',');
+const anim = q.get('anim') || 'idle';
+const cols = +(q.get('cols') || Math.min(ids.length, 6));
+const spacing = +(q.get('sp') || 1.6);
+const yaw = +(q.get('yaw') || 0.35);
+const camDist = +(q.get('dist') || 0);
+const camH = +(q.get('h') || 0.8);
+const mod = await import(`../js/game/models/${modName}.js`);
+const canvas = document.getElementById('c');
+const r = new Renderer(canvas, { preserveDrawingBuffer: true });
+r.setSize(innerWidth, innerHeight);
+const scene = new Scene();
+scene.sky = { uniforms: { uZenith:[0.55,0.72,1.0], uHorizon:[0.98,0.9,0.95], uBottom:[0.9,0.88,0.98], uSkyExp:0.7, uSunGlow:[1,0.9,0.7], uSunSize:0.003, uStars:0, uAurora:0, uAurora1:[0,0,0], uAurora2:[0,0,0], uSwirl:0.3 } };
+const ground = new Mesh(G.roundedBoxGeo(60, 1, 60, 0.3, 3), new Material({ color: 0xbfe8a8 }));
+ground.position.y = -0.5; scene.add(ground);
+const atlas = makeParticleAtlas();
+const shadows = new BillboardBatch({ max: 100, atlas, flat: true, renderOrder: 10 });
+scene.add(shadows);
+const rigs = [];
+const rows = Math.ceil(ids.length / cols);
+ids.forEach((id, i) => {
+  const cx = (i % cols) - (cols - 1) / 2, cz = Math.floor(i / cols) - (rows - 1) / 2;
+  let rig = mod[fnName](id);
+  const node = rig.root || rig;
+  node.position.set(cx * spacing, 0, cz * spacing * 1.1);
+  node.rotation.y = yaw;
+  scene.add(node);
+  rigs.push({ rig, node, id });
+});
+const cam = new Camera(35, 0.1, 500);
+const w = cols * spacing, d = rows * spacing;
+const dist = camDist || Math.max(w * 1.25, d * 1.6, 3.2);
+cam.position.set(0, camH + dist * 0.35, dist);
+cam.target.set(0, camH * 0.75, 0);
+document.getElementById('lbl').textContent = ids.join('  ·  ');
+let t = 0; window.__frames = 0;
+const tParam = +(q.get('t') || 0);
+function frame(){
+  const dt = 1/60; t += dt; r.globals.uTime = t;
+  shadows.begin();
+  for (const R of rigs) {
+    if (R.rig.update) R.rig.update(dt, { anim, t: tParam || t, speed: +(q.get('speed')||0.8), vy: +(q.get('vy')||0), attackKind: q.get('ak')||'punch', specialKind: q.get('sk')||'cast' });
+    shadows.push(R.node.position.x, 0.01, R.node.position.z, 0.9, 0.15,0.1,0.3,0.32, 0, 14);
+  }
+  r.render(scene, cam);
+  window.__frames++;
+  requestAnimationFrame(frame);
+}
+frame();
+</script></body></html>

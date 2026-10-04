@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2a1f4a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="소미의 어드벤처">
+<title>소미의 어드벤처 타임</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <canvas id="gl"></canvas>
+  <div id="vignette"></div>
+  <div id="ui"></div>
+  <div id="flash"></div>
+</div>
+<script>
+  // Players get the single bundled build (dist/game.js: fast to load, also works when opened straight from disk).
+  // Development (localhost or ?dev / ?stage / ?seq / ?debug) loads the ES modules in js/ directly.
+  (function () {
+    var dev = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) || /[?&](dev|stage|seq|debug)=/.test(location.search);
+    var s = document.createElement('script');
+    if (dev) { s.type = 'module'; s.src = 'js/main.js'; } else { s.src = 'dist/game.js'; }
+    document.body.appendChild(s);
+  })();
+</script>
+</body>
+</html>

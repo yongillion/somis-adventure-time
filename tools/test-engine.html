@@ -1,0 +1,53 @@
+<!doctype html><html><head><meta charset="utf-8"><title>engine test</title>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#000}canvas{width:100%;height:100%;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script type="module">
+import { Renderer, Texture } from '../js/engine/renderer.js';
+import { Scene, Mesh, Camera, InstancedMesh } from '../js/engine/scene.js';
+import { Material } from '../js/engine/material.js';
+import * as G from '../js/engine/geometry.js';
+import { makeParticleAtlas, makeDetailTexture } from '../js/engine/texgen.js';
+import { ParticleSystem, BillboardBatch } from '../js/engine/particles.js';
+import { Vec3 } from '../js/engine/math.js';
+const canvas = document.getElementById('c');
+const r = new Renderer(canvas);
+r.setSize(innerWidth, innerHeight);
+const scene = new Scene();
+scene.sky = { uniforms: { uZenith:[0.45,0.62,0.98], uHorizon:[0.98,0.85,0.92], uBottom:[0.85,0.8,0.95], uSkyExp:0.6, uSunGlow:[1,0.9,0.7], uSunSize:0.004, uStars:0.0, uAurora:0, uAurora1:[0.3,1,0.6], uAurora2:[0.6,0.3,1], uSwirl:0.5 } };
+const grassTex = makeDetailTexture('grass', 256, 1);
+const ground = new Mesh(G.roundedBoxGeo(16, 2, 16, 0.6, 4), new Material({ color: 0x8be07a, map: grassTex, mapRepeat:[0.25,0.25], satField:true }));
+ground.position.set(0,-1,0); scene.add(ground);
+const s = new Mesh(G.sphereGeo(1, 32, 24), new Material({ color: 0xff9ec7, spec: 0.4, rim: 0.45 })); s.position.set(-2, 1, 0); scene.add(s);
+const star = new Mesh(G.UNIT.star(), new Material({ color: 0xffd84a, spec: 0.5, rim: 0.4, emissive: 0x302000 })); star.position.set(1.5, 1.4, 0); star.scale.set(2,2,2); scene.add(star);
+const heart = new Mesh(G.UNIT.heart(), new Material({ color: 0xff5a7a, spec: 0.5 })); heart.position.set(3.6, 1.2, 0); heart.scale.set(1.6,1.6,1.6); scene.add(heart);
+const lathe = new Mesh(G.latheGeo([[0,0],[0.9,0.05],[1,0.4],[0.5,0.6],[0.25,1.4],[0.3,1.5],[0,1.55]], 24), new Material({ color: 0x9ad0ff, rim:0.5 })); lathe.position.set(-4.5,0,1); scene.add(lathe);
+const torus = new Mesh(G.torusGeo(0.8, 0.25, 12, 32), new Material({ color: 0xc89bff, spec:0.3 })); torus.position.set(0,1,-3); scene.add(torus);
+const cyl = new Mesh(G.cylinderGeo(0.6, 0.8, 1.5, 24), new Material({ color: 0xffb36b })); cyl.position.set(4,0.75,-3); scene.add(cyl);
+const cap = new Mesh(G.capsuleGeo(0.5, 1, 16, 6), new Material({ color: 0x7bdcd0 })); cap.position.set(-3,1,-3); scene.add(cap);
+const cr = new Mesh(G.crystalGeo(0.4, 1, 0.4, 6), new Material({ color: 0x9ef0ff, emissive:0x204050, spec:0.6 })); cr.position.set(6,1,1); scene.add(cr);
+const rock = new Mesh(G.rockGeo(0.8, 3, 0.3, 1), new Material({ color: 0xb8a99a })); rock.position.set(-6,0.5,-1); scene.add(rock);
+const inst = new InstancedMesh(G.coneGeo(0.3, 0.8, 8), new Material({ color: 0x5fcf6a, wind: 0.08 }), 50);
+for (let i=0;i<50;i++){ inst.setTransformAt(i, (Math.random()-0.5)*14, 0.4, (Math.random()-0.5)*14, 0, Math.random()*6, 0, 0.6+Math.random()*0.6); inst.setColorAt(i, 0.8+Math.random()*0.3, 1, 0.8+Math.random()*0.2); }
+inst.count = 50; scene.add(inst);
+const atlas = makeParticleAtlas();
+const ps = new ParticleSystem(scene, atlas, 500);
+const shadows = new BillboardBatch({ max: 50, atlas, flat: true, renderOrder: 10 });
+scene.add(shadows);
+const cam = new Camera(50, 0.1, 500);
+cam.position.set(0, 6, 13); cam.target.set(0, 0.8, 0);
+let t = 0;
+window.__frames = 0;
+function frame(){
+  t += 1/60;
+  r.globals.uTime = t;
+  star.rotation.y = t; heart.rotation.y = -t*0.8;
+  if (window.__frames % 10 === 0) ps.emit({ pos: new Vec3(0,2,2), count: 12, speed:[1,3], life:[0.6,1.2], size:[0.2,0.4], colors:[[1,0.9,0.4],[1,0.6,0.8],[0.6,0.9,1]], tile:[2,3,4], additive: true, gravity: 2 });
+  ps.update(1/60, cam);
+  shadows.begin(); shadows.push(-2, 0.02, 0, 2, 0.1,0.05,0.2,0.35, 0, 14); shadows.push(1.5, 0.02, 0, 1.5, 0.1,0.05,0.2,0.3, 0, 14);
+  r.render(scene, cam);
+  window.__frames++;
+  requestAnimationFrame(frame);
+}
+frame();
+window.__stats = () => r.stats;
+</script></body></html>

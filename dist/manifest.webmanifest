@@ -1,0 +1,15 @@
+{
+  "name": "소미의 어드벤처 타임",
+  "short_name": "소미의 어드벤처",
+  "description": "동물 친구들과 함께 회색 안개에 빠진 꿈나라에 색깔을 되찾아 주는 3D 어드벤처",
+  "lang": "ko",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#2a1f4a",
+  "theme_color": "#2a1f4a",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

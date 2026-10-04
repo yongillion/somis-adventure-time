@@ -1,0 +1,144 @@
+<!doctype html><html><head><meta charset="utf-8"><title>props viewer</title>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#000}canvas{width:100%;height:100%;display:block}
+.lbl{position:fixed;transform:translate(-50%,0);color:#2d2a44;font:bold 11px sans-serif;text-align:center;pointer-events:none;white-space:nowrap;text-shadow:0 0 3px #fff,0 0 2px #fff}
+.lbl i{font-style:normal;font-weight:normal;opacity:.75}
+#info{position:fixed;left:6px;top:4px;color:#334;font:11px monospace;text-shadow:0 0 3px #fff}</style></head>
+<body><canvas id="c"></canvas><div id="info"></div>
+<script type="module">
+// Viewer for props / objects / platforms.
+// URL params:
+//  mod=props|objects|platforms   fn=buildProp|buildObject|buildPlatform|...
+//  ids=a,b,c            ids passed as first arg
+//  args=[3,3,0.6]       extra positional args (JSON) after id
+//  opts={"seed":1}      options object appended last (JSON)
+//  items=[{"id":"lantern","opts":{},"args":[],"call":"o.setLit(true)","y":0}]   (overrides ids)
+//  call=o.setLit(true)  JS run on each built object `o` (after build, before pre-simulation)
+//  pre=1.0              seconds simulated (update) before first frame;  freeze=1 -> no time advance after
+//  cols, sp (spacing), dist, h (camera target height), yaw (object yaw), cy (camera height factor), fov
+//  cat=1 -> adds the 1.2m cat at the row start for scale (caty/catx/catz override its position);   y=2 -> lift all items;  night=1;  nolabel=1
+//  ground=0 -> hide ground plane
+import { Renderer } from '../js/engine/renderer.js';
+import { Scene, Mesh, Camera, Node } from '../js/engine/scene.js';
+import { Material } from '../js/engine/material.js';
+import { Vec3 } from '../js/engine/math.js';
+import * as G from '../js/engine/geometry.js';
+import { makeParticleAtlas } from '../js/engine/texgen.js';
+import { BillboardBatch } from '../js/engine/particles.js';
+const q = new URLSearchParams(location.search);
+const J = (k, d) => { const v = q.get(k); if (!v) return d; try { return JSON.parse(v); } catch (e) { console.error('bad JSON for ' + k + ': ' + v); return d; } };
+const modName = q.get('mod') || 'props';
+const fnName = q.get('fn') || ({ props: 'buildProp', objects: 'buildObject', platforms: 'buildPlatform' })[modName];
+let items = J('items', null);
+if (!items) items = (q.get('ids') || 'rock').split(',').map((id) => ({ id }));
+const gArgs = J('args', []), gOpts = J('opts', null), gCall = q.get('call') || '';
+const cols = +(q.get('cols') || Math.min(items.length, 6));
+const spacing = +(q.get('sp') || 2.5);
+const yaw = +(q.get('yaw') || 0.35);
+const camDist = +(q.get('dist') || 0);
+const camH = +(q.get('h') || 0.8);
+const night = q.get('night') === '1';
+const freeze = q.get('freeze') === '1';
+const pre = +(q.get('pre') || 0);
+const liftY = +(q.get('y') || 0);
+const mod = await import(`../js/game/models/${modName}.js`);
+const canvas = document.getElementById('c');
+const r = new Renderer(canvas, { preserveDrawingBuffer: true });
+r.setSize(innerWidth, innerHeight);
+const scene = new Scene();
+scene.sky = { uniforms: night
+  ? { uZenith:[0.08,0.09,0.25], uHorizon:[0.35,0.3,0.55], uBottom:[0.2,0.18,0.35], uSkyExp:0.6, uSunGlow:[0.6,0.6,0.9], uSunSize:0.002, uStars:1, uAurora:0, uAurora1:[0,0,0], uAurora2:[0,0,0], uSwirl:0.2 }
+  : { uZenith:[0.55,0.72,1.0], uHorizon:[0.98,0.9,0.95], uBottom:[0.9,0.88,0.98], uSkyExp:0.7, uSunGlow:[1,0.9,0.7], uSunSize:0.003, uStars:0, uAurora:0, uAurora1:[0,0,0], uAurora2:[0,0,0], uSwirl:0.3 } };
+if (night) {
+  const g = r.globals;
+  g.uSunColor.set([0.62, 0.64, 0.85]); g.uSkyColor.set([0.42, 0.45, 0.75]); g.uGroundColor.set([0.3, 0.28, 0.42]); g.uFogColor.set([0.3, 0.28, 0.5]);
+}
+if (q.get('ground') !== '0') {
+  const ground = new Mesh(G.roundedBoxGeo(80, 1, 80, 0.3, 3), new Material({ color: q.get('gc') ? parseInt(q.get('gc'), 16) : (night ? 0x7c86b8 : 0xbfe8a8) }));
+  ground.position.y = -0.5; scene.add(ground);
+}
+const atlas = makeParticleAtlas();
+const shadows = new BillboardBatch({ max: 200, atlas, flat: true, renderOrder: 10 });
+scene.add(shadows);
+const objs = [];
+const total = items.length + (q.get('cat') === '1' ? 1 : 0);
+const rows = Math.ceil(total / cols);
+let slot = 0;
+function place(node, i) {
+  const cx = (i % cols) - (cols - 1) / 2, cz = Math.floor(i / cols) - (rows - 1) / 2;
+  node.position.set(cx * spacing, liftY, cz * spacing * 1.1);
+}
+if (q.get('cat') === '1') {
+  const am = await import('../js/game/models/animals.js');
+  const rig = am.buildAnimal('cat');
+  place(rig.root, slot++);
+  rig.root.rotation.y = yaw;
+  rig.root.position.y = +(q.get('caty') || 0);
+  if (q.get('catx')) rig.root.position.x = +q.get('catx');
+  if (q.get('catz')) rig.root.position.z = +q.get('catz');
+  scene.add(rig.root);
+  objs.push({ o: rig, node: rig.root, id: 'cat 1.2m', cat: true });
+}
+function triCount(node) { let t = 0; node.traverse((n) => { if (n.isMesh && n.geometry && n.visible !== false) t += (n.geometry.index ? n.geometry.index.length : n.geometry.vertexCount) / 3; }); return Math.round(t); }
+function meshCount(node) { let c = 0; node.traverse((n) => { if (n.isMesh) c++; }); return c; }
+const t0 = performance.now();
+for (const it of items) {
+  const args = it.args || gArgs;
+  const opts = it.opts || gOpts;
+  const callArgs = [it.id, ...args];
+  if (opts) callArgs.push(opts);
+  let o;
+  try { o = mod[it.fn || fnName](...callArgs); } catch (e) { console.error('build ' + it.id + ': ' + e.message + '\n' + e.stack); continue; }
+  const node = o.root || o;
+  place(node, slot++);
+  if (it.y !== undefined) node.position.y = it.y;
+  node.rotation.y = it.yaw !== undefined ? it.yaw : yaw;
+  scene.add(node);
+  const rec = { o, node, id: it.label || it.id, tris: triCount(node), meshes: meshCount(node) };
+  const call = it.call || gCall;
+  if (call) { try { (new Function('o', 'node', call))(o, node); } catch (e) { console.error('call ' + it.id + ': ' + e.message); } }
+  objs.push(rec);
+}
+const buildMs = performance.now() - t0;
+const cam = new Camera(+(q.get('fov') || 35), 0.1, 500);
+const w = cols * spacing, d = rows * spacing;
+const dist = camDist || Math.max(w * 1.25, d * 1.6, 3.2);
+cam.position.set(0, camH + dist * +(q.get('cy') || 0.35), dist);
+cam.target.set(0, camH * 0.75, 0);
+// labels
+const labels = [];
+if (q.get('nolabel') !== '1') for (const R of objs) {
+  const el = document.createElement('div'); el.className = 'lbl';
+  el.innerHTML = R.id + (R.cat ? '' : ` <i>${R.tris}t/${R.meshes}m</i>`);
+  document.body.appendChild(el); labels.push([el, R]);
+}
+let t = 0; window.__frames = 0;
+const step = (dt) => {
+  t += dt;
+  for (const R of objs) {
+    if (R.cat) { R.o.update(dt, { anim: 'idle', t, speed: 0 }); continue; }
+    if (R.o.update) R.o.update(dt, 1);
+  }
+};
+for (let k = 0; k < Math.round(pre * 60); k++) step(1 / 60);
+let last = performance.now();
+const tmp = new Vec3();
+function frame() {
+  const now = performance.now();
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (!freeze) step(dt);
+  r.globals.uTime = t;
+  shadows.begin();
+  for (const R of objs) shadows.push(R.node.position.x, 0.01, R.node.position.z, 1.0, 0.15, 0.1, 0.3, 0.25, 0, 14);
+  r.render(scene, cam);
+  for (const [el, R] of labels) {
+    tmp.set(R.node.position.x, Math.min(R.node.position.y, 0), R.node.position.z);
+    const p = cam.project(tmp);
+    el.style.left = (p.x * innerWidth) + 'px'; el.style.top = (p.y * innerHeight + 6) + 'px';
+  }
+  document.getElementById('info').textContent = `build ${buildMs.toFixed(0)}ms  calls ${r.stats.calls}  tris ${Math.round(r.stats.tris)}  t=${t.toFixed(2)}`;
+  window.__frames++;
+  requestAnimationFrame(frame);
+}
+frame();
+window.__objs = objs;
+</script></body></html>
