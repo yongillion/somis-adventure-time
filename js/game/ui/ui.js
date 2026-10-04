@@ -2,6 +2,7 @@
 // ui.js — modal UI framework: screen stack with spatial navigation
 // (keyboard / gamepad / touch), dialog boxes with typewriter text & choices.
 // ============================================================================
+import { Orient } from '../../engine/orient.js';
 import { CTX } from '../ctx.js';
 import { charPortrait, petPortrait, npcPortrait } from './portraits.js';
 
@@ -46,13 +47,13 @@ export class Screen {
     const items = this.items();
     if (!items.length) return;
     if (!this.focusEl || !items.includes(this.focusEl)) { this.focus(items[0]); return; }
-    const r0 = this.focusEl.getBoundingClientRect();
-    const cx = r0.left + r0.width / 2, cy = r0.top + r0.height / 2;
+    // compare positions in the landscape game box (screen rects are turned on portrait phones)
+    const center = (el) => { const r = el.getBoundingClientRect(); return Orient.toLocal(r.left + r.width / 2, r.top + r.height / 2); };
+    const [cx, cy] = center(this.focusEl);
     let best = null, bs = Infinity;
     for (const e of items) {
       if (e === this.focusEl) continue;
-      const r = e.getBoundingClientRect();
-      const x = r.left + r.width / 2, y = r.top + r.height / 2;
+      const [x, y] = center(e);
       const dx = x - cx, dy = y - cy;
       let primary, secondary;
       if (dir === 'left') { if (dx > -4) continue; primary = -dx; secondary = Math.abs(dy); }
@@ -247,7 +248,7 @@ export class UI {
   confirm(text, yes = '네', no = '아니요') {
     return new Promise((resolve) => {
       const el = h('div', { class: 'screen', style: 'background:rgba(30,15,60,.45)' });
-      const p = h('div', { class: 'panel', style: 'padding:calc(var(--u)*4) calc(var(--u)*5);display:flex;flex-direction:column;align-items:center;gap:calc(var(--u)*3);max-width:min(90vw,calc(var(--u)*90))' });
+      const p = h('div', { class: 'panel', style: 'padding:calc(var(--u)*4) calc(var(--u)*5);display:flex;flex-direction:column;align-items:center;gap:calc(var(--u)*3);max-width:min(calc(var(--vw)*90),calc(var(--u)*90))' });
       p.append(h('div', { style: 'font-size:calc(var(--u)*3.4);text-align:center;color:var(--ink);word-break:keep-all;line-height:1.5' }, text));
       const row = h('div', { style: 'display:flex;gap:calc(var(--u)*3)' });
       let sc;

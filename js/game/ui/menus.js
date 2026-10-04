@@ -14,14 +14,14 @@ const sfx = (n, o) => { if (CTX.audio) CTX.audio.sfx(n, o); };
 
 const CSS = `
 .mscreen { background: rgba(28,14,56,.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
-.mpanel { padding: calc(var(--u)*3.4) calc(var(--u)*4); max-width: min(94vw, calc(var(--u)*150)); max-height: 92vh; display: flex; flex-direction: column; gap: calc(var(--u)*2.2); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+.mpanel { padding: calc(var(--u)*3.4) calc(var(--u)*4); max-width: min(calc(var(--vw)*94), calc(var(--u)*150)); max-height: calc(var(--vh)*92); display: flex; flex-direction: column; gap: calc(var(--u)*2.2); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
 .mtitle { font-size: calc(var(--u)*5); color: var(--pink-d); text-align: center; text-shadow: 0 2px 0 #fff; }
 .mrow { display: flex; gap: calc(var(--u)*2); flex-wrap: wrap; justify-content: center; }
 .mstats { display: flex; gap: calc(var(--u)*2.4); justify-content: center; flex-wrap: wrap; font-size: calc(var(--u)*2.8); color: var(--ink); }
 .mstats span { display: inline-flex; align-items: center; gap: calc(var(--u)*0.8); background: var(--paper-2); border-radius: 999px; padding: calc(var(--u)*0.6) calc(var(--u)*1.8); }
 .mstats svg { width: calc(var(--u)*3.6); height: calc(var(--u)*3.6); }
 .cgrid { display: grid; grid-template-columns: repeat(10, 1fr); gap: calc(var(--u)*1.2); overflow-y: auto; padding: calc(var(--u)*1); }
-@media (max-aspect-ratio: 4/3) { .cgrid { grid-template-columns: repeat(6, 1fr); } }
+html.narrow .cgrid { grid-template-columns: repeat(6, 1fr); } /* tall game box (class set by engine/orient.js) */
 .ccard { position: relative; aspect-ratio: 1; border-radius: calc(var(--u)*2.4); background: radial-gradient(circle at 50% 35%, #fff, #ffe6f2); border: calc(var(--u)*0.5) solid #fff; box-shadow: 0 calc(var(--u)*0.5) 0 #e8d8f0; cursor: pointer; pointer-events: auto; overflow: hidden; padding: 0; transition: transform .12s; }
 .ccard img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ccard.locked img { filter: brightness(0) opacity(.3); }
@@ -68,7 +68,7 @@ export function openPause(o) {
   const ui = CTX.ui;
   const sd = o.stageId && Save.data ? Save.stage(o.stageId) : null;
   const el = h('div', { class: 'screen mscreen' });
-  const p = h('div', { class: 'panel mpanel', style: 'min-width:min(86vw,calc(var(--u)*70))' });
+  const p = h('div', { class: 'panel mpanel', style: 'min-width:min(calc(var(--vw)*86),calc(var(--u)*70))' });
   p.append(h('div', { class: 'mtitle' }, '잠깐 쉬어요'));
   if (o.stageId && STAGES[o.stageId]) {
     p.append(h('div', { style: 'text-align:center;font-size:calc(var(--u)*2.8);color:var(--ink-soft)' }, `스테이지 ${o.stageId} · ${STAGES[o.stageId].name}`));
@@ -102,7 +102,7 @@ export function openCharSelect(o = {}) {
   ensureCss();
   const ui = CTX.ui;
   const el = h('div', { class: 'screen mscreen' });
-  const p = h('div', { class: 'panel mpanel', style: 'width:min(96vw,calc(var(--u)*150))' });
+  const p = h('div', { class: 'panel mpanel', style: 'width:min(calc(var(--vw)*96),calc(var(--u)*150))' });
   const owned = new Set(Save.data ? Save.data.chars : ['cat']);
   p.append(h('div', { class: 'mtitle' }, `동물 친구로 변신! (${owned.size}/30)`));
   const grid = h('div', { class: 'cgrid' });
@@ -164,7 +164,7 @@ export function openPetBox(o = {}) {
   ensureCss();
   const ui = CTX.ui;
   const el = h('div', { class: 'screen mscreen' });
-  const p = h('div', { class: 'panel mpanel', style: 'width:min(96vw,calc(var(--u)*130))' });
+  const p = h('div', { class: 'panel mpanel', style: 'width:min(calc(var(--vw)*96),calc(var(--u)*130))' });
   const ownedN = PETS.filter((pt) => Save.hasPet(pt.id)).length;
   p.append(h('div', { class: 'mtitle' }, `꿈방울 펫 상자 (${ownedN}/15)`));
   const body = h('div', { style: 'display:flex;gap:calc(var(--u)*3);align-items:stretch;flex-wrap:wrap;justify-content:center' });
@@ -251,7 +251,7 @@ export function openSettings(o = {}) {
   const ui = CTX.ui;
   const S = Save.settings;
   const el = h('div', { class: 'screen mscreen' });
-  const p = h('div', { class: 'panel mpanel', style: 'width:min(94vw,calc(var(--u)*110));overflow-y:auto' });
+  const p = h('div', { class: 'panel mpanel', style: 'width:min(calc(var(--vw)*94),calc(var(--u)*110));overflow-y:auto' });
   p.append(h('div', { class: 'mtitle' }, '설정'));
   const vol = (label, key, apply) => {
     const meter = h('div', { class: 'meter' }, h('i', { style: `width:${Math.round(S[key] * 100)}%` }));

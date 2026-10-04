@@ -2,6 +2,7 @@
 // sequences.js — the story: opening (bedroom → Dreamland), stage clear
 // (color return + results), Noa's memories, the ending and credits.
 // ============================================================================
+import { Orient } from '../../engine/orient.js';
 import { Vec3, Ease, TAU, rgb, lerp, clamp } from '../../engine/math.js';
 import { CTX } from '../ctx.js';
 import { CutsceneMode, Director } from './cutscene.js';
@@ -22,7 +23,7 @@ const sfx = (n, o) => { if (CTX.audio) CTX.audio.sfx(n, o); };
 const jingle = (n) => { if (CTX.audio) CTX.audio.jingle(n); };
 
 const SEQ_CSS = `
-.results { pointer-events: auto; padding: calc(var(--u)*3) calc(var(--u)*5.5); display: flex; flex-direction: column; align-items: center; gap: calc(var(--u)*1.4); min-width: min(88vw, calc(var(--u)*74)); }
+.results { pointer-events: auto; padding: calc(var(--u)*3) calc(var(--u)*5.5); display: flex; flex-direction: column; align-items: center; gap: calc(var(--u)*1.4); min-width: min(calc(var(--vw)*88), calc(var(--u)*74)); }
 .results .rt { font-size: calc(var(--u)*5.2); color: var(--pink-d); text-align: center; }
 .results .rs { font-size: calc(var(--u)*2.6); color: var(--ink-soft); }
 .results .rows { display: grid; grid-template-columns: auto auto; gap: calc(var(--u)*1.1) calc(var(--u)*5); font-size: calc(var(--u)*3.0); color: var(--ink); margin: calc(var(--u)*1) 0; }
@@ -40,7 +41,7 @@ const SEQ_CSS = `
 .credits h2 { font-size: calc(var(--u)*4.4); margin: calc(var(--u)*5) 0 calc(var(--u)*0.6); color: #ffe9a8; text-shadow: 0 0 calc(var(--u)*2) rgba(255,200,120,.55); font-weight: normal; }
 .credits h3 { font-size: calc(var(--u)*3.0); margin: calc(var(--u)*1.5) 0 0; color: #ffc6e4; font-weight: normal; }
 .credits p { font-size: calc(var(--u)*2.8); margin: 0; line-height: 1.6; text-shadow: 0 2px 0 rgba(40,20,70,.6); word-break: keep-all; }
-.credits .grid { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--u)*1.4); max-width: min(92vw, calc(var(--u)*150)); }
+.credits .grid { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--u)*1.4); max-width: min(calc(var(--vw)*92), calc(var(--u)*150)); }
 .credits .cell { display: flex; flex-direction: column; align-items: center; width: calc(var(--u)*13); font-size: calc(var(--u)*2.1); gap: calc(var(--u)*0.4); }
 .credits .cell img { width: calc(var(--u)*11); height: calc(var(--u)*11); border-radius: 50%; background: rgba(255,255,255,.14); box-shadow: 0 0 0 calc(var(--u)*0.35) rgba(255,255,255,.55); }
 .credits .big { font-size: calc(var(--u)*6.4); color: #fff; text-shadow: 0 0 calc(var(--u)*3) rgba(255,190,230,.8), 0 3px 0 rgba(120,60,160,.7); margin-top: calc(var(--u)*6); }
@@ -545,7 +546,7 @@ async function creditsScript(dir, S) {
   const wrap = h('div', { class: 'credits' });
   const roll = h('div', { class: 'roll' });
   const sec = (title, ...kids) => { roll.append(h('h2', {}, title), ...kids); };
-  roll.append(h('div', { style: 'height:100vh' }));
+  roll.append(h('div', { style: 'height:calc(var(--vh)*100)' }));
   roll.append(h('div', { class: 'big' }, '소미의 어드벤처 타임'));
   sec('주인공', h('p', {}, '소미 — 별을 사랑하는 용감한 아이'));
   sec('꿈나라를 지켜 준 친구', h('p', {}, '별고래'), h('p', {}, '노아 — 가장 반짝이는 작은 별'));
@@ -570,7 +571,7 @@ async function creditsScript(dir, S) {
   sec('만든 사람들', h('h3', {}, '이야기 · 그림 · 음악 · 프로그램'), h('p', {}, '아빠 그리고 Claude'));
   roll.append(h('div', { class: 'big' }, '사랑하는 소미에게'), h('p', { style: 'font-size:calc(var(--u)*3.2);max-width:calc(var(--u)*110)' }, '소미가 슬플 때도, 외로울 때도 언제나 곁에서 반짝이는 별이 되어 줄게.'), h('div', { class: 'sign' }, '— 아빠가'));
   roll.append(h('div', { class: 'end' }, '끝'));
-  roll.append(h('div', { style: 'height:40vh' }));
+  roll.append(h('div', { style: 'height:calc(var(--vh)*40)' }));
   wrap.append(roll, h('div', { class: 'hint' }, CTX.game.touchMode ? '화면을 누르고 있으면 빨리 감기' : '점프 버튼을 누르고 있으면 빨리 감기'));
   dir.ui.append(wrap);
   dir.ui.style.pointerEvents = 'auto';
@@ -580,12 +581,12 @@ async function creditsScript(dir, S) {
   await dir.fade('#0b0820', 0, 1.5);
   // scroll (frame-driven so it pauses with the game)
   let y = 0;
-  const total = () => roll.scrollHeight - window.innerHeight * 0.55;
+  const total = () => roll.scrollHeight - Orient.h * 0.55;
   await new Promise((resolve) => {
     scroll = (dt) => {
       if (dir.skipping) { scroll = null; resolve(); return; }
       const fast = held || (CTX.input && (CTX.input.down('jump') || CTX.input.down('confirm') || CTX.input.down('attack')));
-      y += (fast ? 6 : 1) * dt * 54 * Math.max(0.7, window.innerHeight / 800);
+      y += (fast ? 6 : 1) * dt * 54 * Math.max(0.7, Orient.h / 800);
       roll.style.transform = `translateY(${-y}px)`;
       if (y >= total()) { scroll = null; resolve(); }
     };

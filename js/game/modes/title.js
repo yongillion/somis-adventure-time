@@ -83,7 +83,7 @@ export class TitleMode {
   // ------------------------------------------------------------------ screens
   showTouch() {
     const el = h('div', { class: 'screen title-screen' });
-    el.innerHTML = `<div class="title-top">${logoHTML()}</div><div style="flex:1.5"></div><div class="touch-prompt">TOUCH</div><div style="flex:1"></div><div class="title-foot">소미를 위해 만든 꿈나라 모험 · 버전 1.0</div>`;
+    el.innerHTML = `<div class="title-top">${logoHTML()}</div><div style="flex:1.5"></div><div class="touch-prompt">TOUCH</div><div style="flex:1"></div><div class="title-foot">소미를 위해 만든 꿈나라 모험 · 버전 0.1</div>`;
     this.ui.appendChild(el);
     this.el = el;
     let done = false;
@@ -101,7 +101,8 @@ export class TitleMode {
       CTX.input.onAny(null);
       this.showMenu();
     };
-    el.addEventListener('pointerdown', go);
+    // click (not pointerdown): only a completed tap counts as user activation, which fullscreen requires
+    el.addEventListener('click', go);
     setTimeout(() => CTX.input.onAny((kind) => { if (kind !== 'pointer') go(); }), 250);
   }
   showMenu() {

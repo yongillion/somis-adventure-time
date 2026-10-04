@@ -1,6 +1,7 @@
 // ============================================================================
 // input.js — unified keyboard / gamepad / touch (virtual joystick) input
 // ============================================================================
+import { Orient } from './orient.js';
 import { clamp } from './math.js';
 
 const ACTIONS = ['jump', 'attack', 'special', 'pause', 'char', 'pet', 'camL', 'camR', 'up', 'down', 'left', 'right', 'confirm', 'back', 'tabL', 'tabR'];
@@ -118,16 +119,17 @@ export const Input = {
         if (navigator.vibrate) { try { navigator.vibrate(8); } catch (_) { /* ignore */ } }
         return;
       }
-      const w = window.innerWidth;
-      if (e.clientX < w * 0.48 && !this._joy.active) {
+      // positions inside the landscape game box (the box is turned 90° on portrait phones)
+      const [lx, ly] = Orient.toLocal(e.clientX, e.clientY);
+      if (lx < Orient.w * 0.48 && !this._joy.active) {
         this._joy.active = true; this._joy.id = e.pointerId;
-        this._joy.ox = e.clientX; this._joy.oy = e.clientY; this._joy.x = e.clientX; this._joy.y = e.clientY;
+        this._joy.ox = lx; this._joy.oy = ly; this._joy.x = lx; this._joy.y = ly;
         this._pointers.set(e.pointerId, { type: 'joy' });
-        this.joyBase.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
+        this.joyBase.style.transform = `translate(${lx}px, ${ly}px)`;
         this.joyBase.classList.add('on');
         this.joyKnob.style.transform = 'translate(-50%, -50%)';
       } else if (this._camDrag.id < 0) {
-        this._camDrag.id = e.pointerId; this._camDrag.lastX = e.clientX; this._camDrag.dx = 0;
+        this._camDrag.id = e.pointerId; this._camDrag.lastX = lx; this._camDrag.dx = 0;
         this._pointers.set(e.pointerId, { type: 'cam' });
       }
     };
@@ -135,9 +137,10 @@ export const Input = {
       const p = this._pointers.get(e.pointerId);
       if (!p) return;
       e.preventDefault();
+      const [lx, ly] = Orient.toLocal(e.clientX, e.clientY);
       if (p.type === 'joy') {
-        this._joy.x = e.clientX; this._joy.y = e.clientY;
-        const R = Math.min(70, window.innerHeight * 0.13);
+        this._joy.x = lx; this._joy.y = ly;
+        const R = Math.min(70, Orient.h * 0.13);
         let dx = this._joy.x - this._joy.ox, dy = this._joy.y - this._joy.oy;
         const d = Math.hypot(dx, dy);
         if (d > R * 1.6) { // drag base along
@@ -149,8 +152,8 @@ export const Input = {
         const ang = Math.atan2(dy, dx);
         this.joyKnob.style.transform = `translate(calc(-50% + ${Math.cos(ang) * cl}px), calc(-50% + ${Math.sin(ang) * cl}px))`;
       } else if (p.type === 'cam') {
-        this._camDrag.dx += e.clientX - this._camDrag.lastX;
-        this._camDrag.lastX = e.clientX;
+        this._camDrag.dx += lx - this._camDrag.lastX;
+        this._camDrag.lastX = lx;
       } else if (p.type === 'btn') {
         // allow sliding between jump/attack: re-target
         const t = document.elementFromPoint(e.clientX, e.clientY);
@@ -239,7 +242,7 @@ export const Input = {
     if (mx || my) { const l = Math.hypot(mx, my); mx /= l; my /= l; }
     if (Math.hypot(pmx, pmy) > Math.hypot(mx, my)) { mx = pmx; my = pmy; }
     if (this._joy.active) {
-      const R = Math.min(70, window.innerHeight * 0.13);
+      const R = Math.min(70, Orient.h * 0.13);
       let dx = (this._joy.x - this._joy.ox) / R, dy = (this._joy.y - this._joy.oy) / R;
       const m = Math.hypot(dx, dy);
       if (m < 0.12) { dx = 0; dy = 0; } else { const k = Math.min(1, (m - 0.12) / 0.75) / m; dx *= k; dy *= k; }

@@ -19,7 +19,7 @@ import { stageIntro, puffyNpc, ctl, SOMI } from './common.js';
 const sfx = (n, o) => { if (CTX.audio) CTX.audio.sfx(n, o); };
 
 const VOICE_CSS = `
-.noa-voice { position: absolute; left: 50%; top: calc(env(safe-area-inset-top,0px) + var(--u)*27); transform: translateX(-50%); width: min(86vw, calc(var(--u)*120)); text-align: center;
+.noa-voice { position: absolute; left: 50%; top: calc(env(safe-area-inset-top,0px) + var(--u)*27); transform: translateX(-50%); width: min(calc(var(--vw)*86), calc(var(--u)*120)); text-align: center;
   font-size: calc(var(--u)*3.2); color: #f4ecff; text-shadow: 0 0 calc(var(--u)*1.6) rgba(150,120,255,.9), 0 2px 0 rgba(50,30,90,.8); letter-spacing: .04em;
   opacity: 0; transition: opacity 1.2s; pointer-events: none; z-index: 6; word-break: keep-all; }
 .noa-voice.on { opacity: 1; }

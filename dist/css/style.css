@@ -18,12 +18,17 @@
   --night: #1d1638;
   --shadow: rgba(60, 30, 90, 0.35);
   --font: 'Jua', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', system-ui, sans-serif;
-  --u: min(1vh, 1.6vw);
+  /* 1% of the landscape game box (set from JS; differs from vw/vh when a portrait phone shows the game turned) */
+  --vw: 1vw;
+  --vh: 1vh;
+  --u: min(var(--vh), calc(var(--vw) * 1.6));
   color-scheme: dark;
 }
 html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #1d1638; overscroll-behavior: none; }
 body { font-family: var(--font); color: var(--ink); -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; touch-action: none; }
 #app { position: fixed; inset: 0; overflow: hidden; background: #1d1638; }
+/* portrait phone: the landscape game box is turned by 90° (see js/engine/orient.js) */
+html.rot #app { inset: auto; left: 0; top: 0; width: var(--app-w); height: var(--app-h); transform-origin: 0 0; transform: var(--app-tf); }
 #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 #vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, rgba(0,0,0,0) 62%, rgba(40,20,70,0.28) 100%); }
 #flash { position: absolute; inset: 0; pointer-events: none; opacity: 0; background: #fff; }
@@ -97,7 +102,7 @@ body.touch .hud-tr { top: calc(env(safe-area-inset-top, 0px) + var(--u) * 11); }
 .banner .big { display: inline-block; font-size: calc(var(--u) * 7.5); color: #fff; text-shadow: 0 calc(var(--u) * 0.6) 0 var(--pink-d), 0 0 calc(var(--u) * 3) rgba(255,120,190,0.7); animation: bannerin .6s cubic-bezier(.2,1.6,.4,1); }
 .banner .sub { font-size: calc(var(--u) * 3.2); color: #fff; margin-top: calc(var(--u) * 1); text-shadow: 0 2px 0 var(--lilac-d); }
 @keyframes bannerin { from { transform: scale(0.3); opacity: 0; } to { transform: none; opacity: 1; } }
-.bossbar { position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + var(--u) * 2.6); transform: translateX(-50%); width: min(60vw, calc(var(--u) * 80)); text-align: center; }
+.bossbar { position: absolute; left: 50%; top: calc(env(safe-area-inset-top, 0px) + var(--u) * 2.6); transform: translateX(-50%); width: min(calc(var(--vw) * 60), calc(var(--u) * 80)); text-align: center; }
 .bossbar .nm { font-size: calc(var(--u) * 2.8); color: #fff; text-shadow: 0 2px 0 var(--lilac-d); margin-bottom: calc(var(--u) * 0.6); }
 .bossbar .bar { height: calc(var(--u) * 2.6); border-radius: 99px; background: rgba(40,20,70,0.55); border: calc(var(--u) * 0.45) solid #fff; overflow: hidden; box-shadow: 0 calc(var(--u) * 0.6) calc(var(--u) * 1.4) var(--shadow); }
 .bossbar .bar i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #ff6fa8, #ffb36b, #ffe36b); transform-origin: left; transition: transform .25s; }
@@ -111,7 +116,7 @@ body.touch .hud-tr { top: calc(env(safe-area-inset-top, 0px) + var(--u) * 11); }
 @keyframes bob { 50% { margin-top: calc(var(--u) * -0.8); } }
 
 /* ------------------------------------------------------------------ dialog */
-.dialog { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + var(--u) * 3); transform: translateX(-50%); width: min(92vw, calc(var(--u) * 120)); min-height: calc(var(--u) * 20); display: flex; gap: calc(var(--u) * 2); align-items: flex-start; padding: calc(var(--u) * 2.4) calc(var(--u) * 3); pointer-events: auto; animation: dlgin .3s cubic-bezier(.2,1.4,.4,1); }
+.dialog { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + var(--u) * 3); transform: translateX(-50%); width: min(calc(var(--vw) * 92), calc(var(--u) * 120)); min-height: calc(var(--u) * 20); display: flex; gap: calc(var(--u) * 2); align-items: flex-start; padding: calc(var(--u) * 2.4) calc(var(--u) * 3); pointer-events: auto; animation: dlgin .3s cubic-bezier(.2,1.4,.4,1); }
 @keyframes dlgin { from { transform: translateX(-50%) translateY(30px); opacity: 0; } to { transform: translateX(-50%); opacity: 1; } }
 .dialog .face { flex: 0 0 auto; width: calc(var(--u) * 14); height: calc(var(--u) * 14); border-radius: 50%; overflow: hidden; background: radial-gradient(circle at 50% 35%, #fff, #ffe6f2); border: calc(var(--u) * 0.5) solid #fff; box-shadow: 0 0 0 calc(var(--u) * 0.4) var(--pink); }
 .dialog .face img { width: 100%; height: 100%; object-fit: cover; }
@@ -165,11 +170,10 @@ body:not(.touch) .touch-only { display: none !important; }
 .title-sub { font-size: calc(var(--u) * 2.4); color: rgba(255,255,255,0.85); text-shadow: 0 1px 2px rgba(60,20,80,0.6); }
 .title-foot { position: absolute; bottom: calc(env(safe-area-inset-bottom, 0px) + var(--u) * 2); left: 0; right: 0; text-align: center; font-size: calc(var(--u) * 1.9); color: rgba(255,255,255,0.75); }
 .menu-list { display: flex; flex-direction: column; gap: calc(var(--u) * 2.4); align-items: stretch; min-width: calc(var(--u) * 40); }
-.rotate-hint { position: absolute; inset: 0; background: #2a1f4a; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; font-size: 22px; pointer-events: auto; z-index: 50; text-align: center; padding: 24px; }
-.rotate-hint .phone { width: 64px; height: 104px; border: 6px solid #fff; border-radius: 14px; animation: rot 2s ease-in-out infinite; }
-@keyframes rot { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+/* fullscreen left during play: same look as the title, over the paused game */
+.pause-touch { z-index: 40; background: radial-gradient(ellipse at 50% 38%, rgba(190,160,255,0.35) 20%, rgba(70,40,130,0.72) 100%); }
 .loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(var(--u) * 3); background: radial-gradient(ellipse at 50% 40%, #3a2a6a, #1d1638); color: #fff; pointer-events: auto; }
-.loading .bar { width: min(60vw, 420px); height: 14px; border-radius: 99px; background: rgba(255,255,255,0.15); overflow: hidden; border: 2px solid rgba(255,255,255,0.6); }
+.loading .bar { width: min(calc(var(--vw) * 60), 420px); height: 14px; border-radius: 99px; background: rgba(255,255,255,0.15); overflow: hidden; border: 2px solid rgba(255,255,255,0.6); }
 .loading .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ff8cbc, #ffd84a); transition: width .2s; }
 .loading .msg { font-size: 18px; opacity: 0.85; }
 .loading .star { width: 64px; height: 64px; animation: spin 1.6s linear infinite; }

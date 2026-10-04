@@ -9,7 +9,7 @@ import { h } from '../ui/ui.js';
 import { Save } from '../save.js';
 
 const CAP_CSS = `
-.caption { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom,0px) + var(--u)*9); transform: translateX(-50%); width: min(88vw, calc(var(--u)*130)); text-align: center; font-size: calc(var(--u)*3.6); line-height: 1.55; color: #fff; text-shadow: 0 2px 0 rgba(60,20,90,.7), 0 0 calc(var(--u)*2) rgba(40,10,70,.8); word-break: keep-all; pointer-events: none; opacity: 0; transition: opacity .8s; }
+.caption { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom,0px) + var(--u)*9); transform: translateX(-50%); width: min(calc(var(--vw)*88), calc(var(--u)*130)); text-align: center; font-size: calc(var(--u)*3.6); line-height: 1.55; color: #fff; text-shadow: 0 2px 0 rgba(60,20,90,.7), 0 0 calc(var(--u)*2) rgba(40,10,70,.8); word-break: keep-all; pointer-events: none; opacity: 0; transition: opacity .8s; }
 .caption.on { opacity: 1; }
 .caption.top { bottom: auto; top: calc(env(safe-area-inset-top,0px) + var(--u)*8); }
 .letterbox { position: absolute; left: 0; right: 0; height: 0; background: #120a24; transition: height .7s ease; pointer-events: none; }

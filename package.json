@@ -1,6 +1,6 @@
 {
   "name": "somi-adventure-time",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "소미의 어드벤처 타임 — 3D 웹 액션 어드벤처 게임 (자체 WebGL2 엔진)",
   "type": "module",

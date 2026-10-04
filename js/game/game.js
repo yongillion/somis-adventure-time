@@ -6,6 +6,7 @@ import { Scene, Camera } from '../engine/scene.js';
 import { ParticleSystem, BillboardBatch } from '../engine/particles.js';
 import { makeParticleAtlas } from '../engine/texgen.js';
 import { Input } from '../engine/input.js';
+import { Orient } from '../engine/orient.js';
 import { Audio } from '../engine/audio.js';
 import { CTX, DIFFICULTY } from './ctx.js';
 import { FX } from './fx.js';
@@ -19,6 +20,8 @@ export class Game {
   constructor(canvas, uiRoot) {
     this.canvas = canvas;
     this.uiRoot = uiRoot;
+    // landscape layout everywhere; portrait phones get the whole game turned by 90°
+    Orient.init(() => this.resize());
     this.renderer = new Renderer(canvas, { antialias: true });
     this.scene = new Scene();
     this.camera = new Camera(50, 0.1, 900);
@@ -77,8 +80,9 @@ export class Game {
     if (this.mode && this.mode.onTouchMode) this.mode.onTouchMode(on);
   }
   resize() {
-    const w = this.canvas.clientWidth || window.innerWidth, h = this.canvas.clientHeight || window.innerHeight;
-    this.renderer.setSize(w, h);
+    Orient.apply();
+    this.renderer.setSize(Orient.w, Orient.h);
+    if (this.suspended && this.mode) this.render(); // a resized canvas is blank until drawn again
   }
   setMode(mode, args) {
     if (this.mode && this.mode.exit) this.mode.exit();
@@ -108,6 +112,8 @@ export class Game {
   frame(t) {
     requestAnimationFrame(this.frameCb);
     if (this.manual) { this.last = t; return; }
+    // paused behind the TOUCH screen (fullscreen left / app hidden): keep the last picture, save battery
+    if (this.suspended) { this.last = t; return; }
     let rdt = (t - this.last) / 1000;
     this.last = t;
     if (!(rdt > 0)) rdt = 1 / 60;
